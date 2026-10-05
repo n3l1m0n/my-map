@@ -4,28 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Военно-тактическая Карта</title>
-    
-    <!-- Подключаем стили Leaflet -->
-    <link rel="stylesheet" href="https://unpkg.com" />
-    
     <style>
+        /* Основные стили интерфейса */
         html, body {
             margin: 0;
             padding: 0;
             height: 100%;
             width: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #242424;
+            background-color: #111;
             color: #fff;
             overflow: hidden;
+            user-select: none;
         }
 
-        #map {
-            height: 100%;
+        /* Интерактивный холст карты */
+        #mapCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
+            height: 100%;
+            cursor: grab;
+            background-color: #16161a;
+        }
+        #mapCanvas:active {
+            cursor: grabbing;
         }
 
-        /* Верхняя панель */
+        /* Верхняя панель со статусом войны */
         .war-status-bar {
             position: absolute;
             top: 10px;
@@ -48,7 +55,7 @@
             color: #ff4d4d;
         }
 
-        /* Боковое меню */
+        /* Боковое меню (Бургер) */
         .sidebar {
             position: absolute;
             top: 0;
@@ -61,6 +68,7 @@
             transition: left 0.3s ease;
             padding: 20px;
             box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+            box-sizing: border-box;
         }
 
         .sidebar.active {
@@ -88,6 +96,7 @@
             color: #dae0e6;
         }
 
+        /* Переключатель языков */
         .lang-switch {
             display: flex;
             gap: 5px;
@@ -110,6 +119,7 @@
             font-weight: bold;
         }
 
+        /* Список фракций */
         .faction-filter {
             display: flex;
             align-items: center;
@@ -124,21 +134,27 @@
             border-radius: 50%;
         }
 
-        .leaflet-popup-content-wrapper {
-            background: #222 !important;
-            color: #fff !important;
+        /* Кастомные всплывающие подсказки внутри Canvas */
+        #map-tooltip {
+            position: absolute;
+            z-index: 3000;
+            background: rgba(20, 20, 20, 0.95);
             border: 1px solid #555;
-            border-radius: 4px !important;
-        }
-        .leaflet-popup-tip {
-            background: #222 !important;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            display: none;
+            pointer-events: none;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
 
+    <!-- Кнопка бургер-меню -->
     <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
 
+    <!-- Боковая панель управления -->
     <div class="sidebar" id="sidebar">
         <div class="lang-switch">
             <button class="lang-btn active" onclick="changeLang('ru', event)">RU</button>
@@ -148,44 +164,45 @@
         <h3 id="menu-title">Тактическое меню</h3>
         
         <div class="faction-filter">
-            <input type="checkbox" id="layerFaction1" checked onchange="toggleLayers()">
+            <input type="checkbox" id="layerFaction1" checked onchange="redraw()">
             <div class="faction-color" style="background: #ff4d4d;"></div>
             <span id="f1-name">Красный Альянс</span>
         </div>
         <div class="faction-filter">
-            <input type="checkbox" id="layerFaction2" checked onchange="toggleLayers()">
+            <input type="checkbox" id="layerFaction2" checked onchange="redraw()">
             <div class="faction-color" style="background: #3399ff;"></div>
             <span id="f2-name">Синяя Федерация</span>
         </div>
     </div>
 
+    <!-- Верхняя статус-панель -->
     <div class="war-status-bar">
         <div class="status-item"><span id="lbl-forces">Силы сторон:</span> <span id="val-forces" style="color: #fff;">500,000</span></div>
         <div class="status-item"><span id="lbl-losses">Потери:</span> <span id="val-losses">12,400</span></div>
         <div class="status-item"><span id="lbl-scale">Масштаб симуляции:</span> <span style="color: #ff9900;">1x</span></div>
     </div>
 
-    <div id="map"></div>
+    <!-- Всплывающее окно для объектов -->
+    <div id="map-tooltip"></div>
 
-    <script src="https://unpkg.com"></script>
+    <!-- Холст для отрисовки тактической карты -->
+    <canvas id="mapCanvas"></canvas>
 
     <script>
-        // Создаем стандартную рабочую карту мира
-        const map = L.map('map', {
-            zoomControl: false
-        }).setView([55.7558, 37.6173], 6);
+        const canvas = document.getElementById('mapCanvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('map-tooltip');
 
-        // Подключаем стандартный слой без фильтров
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors',
-            maxZoom: 18
-        }).addTo(map);
-
-        const faction1Group = L.layerGroup().addTo(map);
-        const faction2Group = L.layerGroup().addTo(map);
+        // Настройки камеры и зума
+        let cameraX = 0;
+        let cameraY = 0;
+        let zoom = 1;
+        let isDragging = false;
+        let startX, startY;
 
         let currentLang = 'ru';
 
+        // Данные локализации
         const i18n = {
             ru: {
                 menuTitle: "Тактическое меню",
@@ -194,9 +211,9 @@
                 forces: "Силы сторон:",
                 losses: "Потери:",
                 m1_title: "Штаб 1-й Дивизии",
-                m1_desc: "<b>Статус:</b> Оборона рубежа.<br><b>Численность:</b> 15,000 чел.",
+                m1_desc: "Статус: Оборона рубежа. Численность: 15,000 чел.",
                 m2_title: "Авангард Синих",
-                m2_desc: "<b>Статус:</b> Наступление.<br><b>Техника:</b> 120 танков."
+                m2_desc: "Статус: Наступление. Техника: 120 танков."
             },
             en: {
                 menuTitle: "Tactical Menu",
@@ -205,100 +222,149 @@
                 forces: "Total Forces:",
                 losses: "Losses:",
                 m1_title: "1st Division HQ",
-                m1_desc: "<b>Status:</b> Holding line.<br><b>Personnel:</b> 15,000.",
+                m1_desc: "Status: Holding line. Personnel: 15,000.",
                 m2_title: "Blue Vanguard",
-                m2_desc: "<b>Status:</b> Advancing.<br><b>Armor:</b> 120 tanks."
+                m2_desc: "Status: Advancing. Armor: 120 tanks."
             }
         };
 
-        const markersData = [
-            {
-                group: faction1Group,
-                coords: [55.7558, 37.6173], 
-                color: '#ff4d4d',
-                radius: 40000, 
-                keyTitle: 'm1_title',
-                keyDesc: 'm1_desc'
-            },
-            {
-                group: faction2Group,
-                coords: [54.5138, 36.2612], 
-                color: '#3399ff',
-                radius: 50000,
-                keyTitle: 'm2_title',
-                keyDesc: 'm2_desc'
-            }
+        // База тактических объектов (баз) в условных координатах игрового мира
+        const markers = [
+            { id: 'layerFaction1', x: -150, y: -50, color: '#ff4d4d', radius: 90, titleKey: 'm1_title', descKey: 'm1_desc' },
+            { id: 'layerFaction2', x: 150, y: 80, color: '#3399ff', radius: 110, titleKey: 'm2_title', descKey: 'm2_desc' }
         ];
 
-        let activeMarkers = [];
-
-        function drawTacticalMap() {
-            faction1Group.clearLayers();
-            faction2Group.clearLayers();
-            activeMarkers = [];
-
-            markersData.forEach(data => {
-                L.circle(data.coords, {
-                    color: data.color,
-                    fillColor: data.color,
-                    fillOpacity: 0.2,
-                    radius: data.radius
-                }).addTo(data.group);
-
-                const marker = L.circleMarker(data.coords, {
-                    radius: 8,
-                    color: '#fff',
-                    fillColor: data.color,
-                    fillOpacity: 1,
-                    weight: 2
-                });
-
-                marker.bindPopup(i18n[currentLang][data.keyDesc]);
-                marker.bindTooltip(i18n[currentLang][data.keyTitle]);
-                
-                marker.addTo(data.group);
-
-                activeMarkers.push({
-                    marker: marker,
-                    keyTitle: data.keyTitle,
-                    keyDesc: data.keyDesc
-                });
-            });
+        // Подгонка размеров экрана
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            redraw();
         }
+        window.addEventListener('resize', resizeCanvas);
 
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('active');
-        }
-
-        function toggleLayers() {
-            const f1Checked = document.getElementById('layerFaction1').checked;
-            const f2Checked = document.getElementById('layerFaction2').checked;
-
-            if (f1Checked) map.addLayer(faction1Group); else map.removeLayer(faction1Group);
-            if (f2Checked) map.addLayer(faction2Group); else map.removeLayer(faction2Group);
-        }
-
-        function changeLang(lang, event) {
-            currentLang = lang;
+        // Главная функция отрисовки карты и сетки координат
+        function redraw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
             
-            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
-            if(event && event.target) {
-                event.target.classList.add('active');
+            // Центрируем камеру и применяем зум/перетаскивание
+            ctx.translate(canvas.width / 2 + cameraX, canvas.height / 2 + cameraY);
+            ctx.scale(zoom, zoom);
+
+            // 1. Рисуем тактическую фоновую сетку (координатные линии)
+            ctx.strokeStyle = '#222';
+            ctx.lineWidth = 1 / zoom;
+            const gridSize = 100;
+            const viewLeft = (-canvas.width / 2 - cameraX) / zoom;
+            const viewRight = (canvas.width / 2 - cameraX) / zoom;
+            const viewTop = (-canvas.height / 2 - cameraY) / zoom;
+            const viewBottom = (canvas.height / 2 - cameraY) / zoom;
+
+            for (let x = Math.floor(viewLeft / gridSize) * gridSize; x <= viewRight; x += gridSize) {
+                ctx.beginPath(); ctx.moveTo(x, viewTop); ctx.lineTo(x, viewBottom); ctx.stroke();
+            }
+            for (let y = Math.floor(viewTop / gridSize) * gridSize; y <= viewBottom; y += gridSize) {
+                ctx.beginPath(); ctx.moveTo(viewLeft, y); ctx.lineTo(viewRight, y); ctx.stroke();
             }
 
-            document.getElementById('menu-title').innerText = i18n[lang].menuTitle;
-            document.getElementById('f1-name').innerText = i18n[lang].f1;
-            document.getElementById('f2-name').innerText = i18n[lang].f2;
-            document.getElementById('lbl-forces').innerText = i18n[lang].forces;
-            document.getElementById('lbl-losses').innerText = i18n[lang].losses;
+            // 2. Рисуем оси координат
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2 / zoom;
+            ctx.beginPath(); ctx.moveTo(-2000, 0); ctx.lineTo(2000, 0); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(0, -2000); ctx.lineTo(0, 2000); ctx.stroke();
 
-            activeMarkers.forEach(item => {
-                item.marker.setPopupContent(i18n[lang][item.keyDesc]);
-                item.marker.setTooltipContent(i18n[lang][item.keyTitle]);
-            });
-        }
+            // 3. Рисуем военные базы и зоны контроля сторон
+            markers.forEach(marker => {
+                const isVisible = document.getElementById(marker.id).checked;
+                if (!isVisible) return;
 
-        drawTacticalMap();
-    </script>
-</body>
-</html>
+                // Зона влияния фракции (радиус контроля фронта)
+                ctx.beginPath();
+                ctx.arc(marker.x, marker.y, marker.radius, 0, Math.PI * 2);
+                ctx.fillStyle = marker.color;
+                ctx.globalAlpha = 0.15;
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+                ctx.strokeStyle = marker.color;
+                ctx.lineWidth = 1.5 / zoom;
+                ctx.stroke();
+
+                // Иконка укрепрайона (центральная точка)
+                ctx.beginPath();
+                ctx.arc(marker.x, marker.y, 8 / zoom, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff';
+                ctx.fill();
+                ctx.beginPath();
+ctx.arc(marker.x, marker.y, 5 / zoom, 0, Math.PI * 2);
+ctx.fillStyle = marker.color;
+ctx.fill();
+});
+ctx.restore();
+}
+// --- ОБРАБОТКА МЫШКИ (ПЕРЕМЕЩЕНИЕ И ЗУМ КАРТЫ) ---
+canvas.addEventListener('mousedown', (e) => {
+if (e.button !== 0) return;
+isDragging = true;
+startX = e.clientX - cameraX;
+startY = e.clientY - cameraY;
+});
+window.addEventListener('mousemove', (e) => {
+if (isDragging) {
+cameraX = e.clientX - startX;
+cameraY = e.clientY - startY;
+redraw();
+}
+checkHover(e);
+});
+window.addEventListener('mouseup', () => isDragging = false);
+canvas.addEventListener('wheel', (e) => {
+e.preventDefault();
+const zoomFactor = 1.1;
+if (e.deltaY < 0) {
+if (zoom < 4) zoom *= zoomFactor;
+} else {
+if (zoom > 0.3) zoom /= zoomFactor;
+}
+redraw();
+}, { passive: false });
+// Проверка наведения мыши на военные базы (вывод карточек данных)
+function checkHover(e) {
+const rect = canvas.getBoundingClientRect();
+const mouseX = e.clientX - rect.left;
+const mouseY = e.clientY - rect.top;
+// Переводим экранные координаты мыши в координаты игрового пространства карты
+const worldX = (mouseX - canvas.width / 2 - cameraX) / zoom;
+const worldY = (mouseY - canvas.height / 2 - cameraY) / zoom;
+let found = false;
+markers.forEach(marker => {
+const isVisible = document.getElementById(marker.id).checked;
+if (!isVisible) return;
+const dist = Math.sqrt((worldX - marker.x) ** 2 + (worldY - marker.y) ** 2);
+// Если мышка находится близко к маркеру
+if (dist < 12 / zoom) {
+tooltip.style.display = 'block';
+tooltip.style.left = (e.clientX + 15) + 'px';
+tooltip.style.top = (e.clientY + 15) + 'px';
+tooltip.innerHTML = <strong>${i18n[currentLang][marker.titleKey]}</strong><br><span style="color:#aaa; font-size:11px;">${i18n[currentLang][marker.descKey]}</span>;
+found = true;
+}
+});
+if (!found) tooltip.style.display = 'none';
+}
+// --- ИНТЕРФЕЙС И УПРАВЛЕНИЕ ---
+function toggleSidebar() {
+document.getElementById('sidebar').classList.toggle('active');
+}
+function changeLang(lang, event) {
+currentLang = lang;
+document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+if (event && event.target) event.target.classList.add('active');
+// Обновление текстов в меню
+document.getElementById('menu-title').innerText = i18n[lang].menuTitle;
+document.getElementById('f1-name').innerText = i18n[lang].f1;
+document.getElementById('f2-name').innerText = i18n[lang].f2;
+document.getElementById('lbl-forces').innerText = i18n[lang].forces;
+document.getElementById('lbl-losses').innerText = i18n[lang].losses;
+}
+// Первичный запуск холста
+resizeCanvas();
