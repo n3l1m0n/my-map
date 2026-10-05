@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Военно-тактическая Карта Симуляции</title>
     
-    <!-- Используем надежные HTTPS CDN, которые 100% одобрены GitHub Pages -->
-    <link rel="stylesheet" href="https://cloudflare.com" integrity="sha512-Zcn6dRxuq7BgdZ6x8S5w1Kz32fU3k40l0w3523fL2Fh32kZ215lM11zU1D0w" crossorigin="anonymous" />
+    <!-- Подключаем стили Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com" />
     
     <style>
         html, body {
@@ -17,11 +17,6 @@
 
         #map {
             height: 100%; width: 100%; z-index: 1;
-        }
-
-        /* Фирменный темный фильтр DeepState для карты OpenStreetMap */
-        .leaflet-tile-container {
-            filter: brightness(0.35) contrast(1.15) saturate(0.65) invert(1) hue-rotate(180deg);
         }
 
         /* ЛЕВАЯ ТАКТИЧЕСКАЯ ПАНЕЛЬ */
@@ -64,7 +59,7 @@
         /* Чекбоксы нижние */
         .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
 
-        /* ПАНЕЛЬ «ПОСЛЕДНИЕ СОБЫТИЯ» (СПРАВА ВВЕРХУ) */
+        /* ПАНЕЛЬ «ПОСЛЕДНИЕ СОБЫТИЯ» */
         .events-panel {
             position: absolute; top: 15px; right: 15px; width: 280px;
             background: rgba(20, 20, 25, 0.9); border: 1px solid #2d2d3d;
@@ -74,7 +69,7 @@
         .events-title { font-size: 13px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px; }
         .events-title::before { content: ''; display: inline-block; width: 6px; height: 6px; background: #48bb78; border-radius: 50%; }
         
-        /* ТАЙМЛАЙН УПРАВЛЕНИЯ ВРЕМЕНЕМ (СНИЗУ) */
+        /* ТАЙМЛАЙН УПРАВЛЕНИЯ ВРЕМЕНЕМ */
         .bottom-timeline {
             position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
             background: rgba(20, 20, 25, 0.95); border: 1px solid #2d2d3d;
@@ -84,7 +79,6 @@
         .time-controls { display: flex; gap: 10px; color: #a0aec0; cursor: pointer; }
         .current-date { font-weight: bold; font-size: 13px; color: #ecc94b; }
 
-        /* Бургер-переключатель для скрытия меню */
         .menu-toggle {
             cursor: pointer; font-size: 18px; margin-bottom: 15px; display: inline-block;
         }
@@ -92,11 +86,9 @@
 </head>
 <body>
 
-    <!-- Боковая тактическая панель управления -->
     <div class="left-panel">
         <div class="menu-toggle">☰</div>
         
-        <!-- Язык -->
         <div class="panel-section">
             <div class="section-title">Язык</div>
             <div class="grid-buttons">
@@ -105,7 +97,6 @@
             </div>
         </div>
 
-        <!-- Сторона контроля -->
         <div class="panel-section">
             <div class="section-title">Сторона</div>
             <div class="grid-buttons">
@@ -114,16 +105,14 @@
             </div>
         </div>
 
-        <!-- Действие кисти -->
         <div class="panel-section">
             <div class="section-title">Действие</div>
-            <div class="grid-buttons" style="margin-bottom:8px;">
+            <div class="grid-buttons">
                 <button class="action-btn active" id="tool-draw" onclick="selectTool('draw')">🔴 Захват<br><span style="font-size:9px;color:#a0aec0;">Закрасить зону</span></button>
                 <button class="action-btn" id="tool-erase" onclick="selectTool('erase')">🧽 Ластик<br><span style="font-size:9px;color:#a0aec0;">Стереть краску</span></button>
             </div>
         </div>
 
-        <!-- Калькулятор боя -->
         <div class="panel-section">
             <div class="section-title">Бой</div>
             <div class="input-group">
@@ -140,7 +129,6 @@
             </div>
         </div>
 
-        <!-- Дополнительные чекбоксы -->
         <div class="checkbox-group">
             <input type="checkbox" id="chk-search" checked> <label for="chk-search">Показывать поиск</label>
         </div>
@@ -149,96 +137,92 @@
         </div>
     </div>
 
-    <!-- Информационная панель последних событий -->
     <div class="events-panel">
         <div class="events-header">
             <div class="events-title">Последние события</div>
-            <div style="font-size:10px; color:#718096; cursor:pointer;">Сводка дня ^</div>
+            <div style="font-size:10px; color:#718096;">Сводка дня ^</div>
         </div>
         <div style="font-size:12px; color:#a0aec0; text-align:center; padding: 10px 0;">Пока нет событий боестолкновений</div>
     </div>
 
-    <!-- Нижняя временная дорожка симуляции -->
     <div class="bottom-timeline">
         <div class="time-controls">◀  ❚❚  ▶</div>
         <div class="current-date">05.10.2026</div>
         <div style="font-size: 11px; background: #2d2d3d; padding: 2px 8px; border-radius: 10px; color:#48bb78;">● Сейчас</div>
     </div>
 
-    <!-- Контейнер интерактивной карты -->
     <div id="map"></div>
 
-    <!-- Подключаем скрипты Leaflet по безопасному протоколу -->
-    <script src="https://cloudflare.com" integrity="sha512-BwR7r4J5kb8j9c46xU5c81x40f51L8u4a3L4D60835fM1d70w2F284kZ1257M" crossorigin="anonymous"></script>
+    <!-- Скрипты Leaflet -->
+    <script src="https://unpkg.com"></script>
 
     <script>
-        // Инициализируем карту с координатами Славянска и Краматорска, как на твоем скришоте
+        // Координаты центра карты (Донбасс)
         const map = L.map('map', { zoomControl: false }).setView([48.95, 37.60], 11);
 
-        // Стабильный глобальный источник карты
+        // Подключаем стандартный, чистый слой карты без багующих фильтров
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 18,
-            attribution: 'OpenFreeMap © OpenStreetMap contributors'
+            attribution: '© OpenStreetMap contributors'
         }).addTo(map);
 
-        // Переменные тактического инструментария
-        let activeSide = 'ru'; // Текущая фракция для закраски
-        let activeTool = 'draw'; // Режим кисти: draw (рисовать) или erase (стереть)
-        let capturedPolygons = []; // Массив нарисованных полигонов
+        let activeSide = 'ru'; 
+        let activeTool = 'draw'; 
+        let capturedPolygons = []; 
 
-        // Координатная сетка фронта по умолчанию (для создания стартовой серой и красной зоны как на скриншоте)
+        // Стартовая демонстрационная зона фронта
         const initialFrontZone = [
             [49.05, 37.75], [49.12, 37.90], [48.98, 38.05], 
             [48.85, 37.95], [48.70, 37.85], [48.75, 37.65],
             [48.90, 37.70]
         ];
 
-        // Добавляем стартовую тактическую зону контроля (Красная армия фронта)
         const baseLayer = L.polygon(initialFrontZone, {
             color: '#c53030',
             fillColor: '#c53030',
             fillOpacity: 0.35,
             weight: 2
         }).addTo(map);
-capturedPolygons.push(baseLayer);
-// Функция переключения активной стороны
-function selectSide(side) {
-activeSide = side;
-document.getElementById('side-ru').classList.remove('active');
-document.getElementById('side-ua').classList.remove('active');
-if(side === 'ru') {
-document.getElementById('side-ru').classList.add('active');
-document.getElementById('tool-draw').innerHTML = "🔴 Захват
-Россия захватывает";
-} else {
-document.getElementById('side-ua').classList.add('active');
-document.getElementById('tool-draw').innerHTML = "🔵 Захват
-Украина захватывает";
-}
-}
-// Функция переключения кисти
-function selectTool(tool) {
-activeTool = tool;
-document.getElementById('tool-draw').classList.remove('active', 'blue-active');
-document.getElementById('tool-erase').classList.remove('active');
-if(tool === 'draw') {
-if(activeSide === 'ru') document.getElementById('tool-draw').classList.add('active');
-else document.getElementById('tool-draw').classList.add('blue-active');
-} else {
-document.getElementById('tool-erase').classList.add('active');
-}
-}
-// РЕЖИМ КЛИКА: Динамический захват территорий кликом по карте
+        capturedPolygons.push(baseLayer);
+
+        function selectSide(side) {
+            activeSide = side;
+            document.getElementById('side-ru').classList.remove('active');
+            document.getElementById('side-ua').classList.remove('active');
+            
+            if(side === 'ru') {
+                document.getElementById('side-ru').classList.add('active');
+                document.getElementById('tool-draw').innerHTML = "🔴 Захват<br><span style='font-size:9px;color:#a0aec0;'>Россия захватывает</span>";
+            } else {
+                document.getElementById('side-ua').classList.add('active');
+                document.getElementById('tool-draw').innerHTML = "🔵 Захват<br><span style='font-size:9px;color:#a0aec0;'>Украина захватывает</span>";
+            }
+            selectTool(activeTool);
+        }
+
+        function selectTool(tool) {
+            activeTool = tool;
+            document.getElementById('tool-draw').classList.remove('active', 'blue-active');
+            document.getElementById('tool-erase').classList.remove('active');
+            
+            if(tool === 'draw') {
+                if(activeSide === 'ru') document.getElementById('tool-draw').classList.add('active');
+                else document.getElementById('tool-draw').classList.add('blue-active');
+            } else {
+                document.getElementById('tool-erase').classList.add('active');
+            }
+        }
+
 map.on('click', function(e) {
-const clickCoords = [e.latlng.lat, e.latlng.lng];
 if(activeTool === 'draw') {
-// Генерируем тактический боевой квадрат вокруг точки клика
-const offset = 0.025;
+const clickLat = e.latlng.lat;
+const clickLng = e.latlng.lng;
+const offset = 0.015;
 const polyPoints = [
-[clickCoords[0] + offset, clickCoords[1] - offset],
-[clickCoords[0] + offset, clickCoords[1] + offset],
-[clickCoords[0] - offset, clickCoords[1] + offset],
-[clickCoords[0] - offset, clickCoords[1] - offset]
+[clickLat + offset, clickLng - offset],
+[clickLat + offset, clickLng + offset],
+[clickLat - offset, clickLng + offset],
+[clickLat - offset, clickLng - offset]
 ];
 const colorConfig = activeSide === 'ru' ? '#c53030' : '#2b6cb0';
 const newZone = L.polygon(polyPoints, {
@@ -247,23 +231,21 @@ fillColor: colorConfig,
 fillOpacity: 0.4,
 weight: 1.5
 }).addTo(map);
-// Записываем в память, чтобы ластик мог удалять
 capturedPolygons.push(newZone);
-// Автоматическое смещение камеры к зоне боевых действий, если стоит чекбокс
+attachEraseEvent(newZone);
 if(document.getElementById('chk-cam').checked) {
 map.panTo(e.latlng);
 }
 }
 });
-// Работа ластика: при клике на полигон в режиме ластика — удаляем его с карты
-map.on('layeradd', function() {
-capturedPolygons.forEach((poly, index) => {
+function attachEraseEvent(poly) {
 poly.on('click', function(event) {
 if(activeTool === 'erase') {
 map.removeLayer(poly);
-capturedPolygons.splice(index, 1);
-L.DomEvent.stopPropagation(event); // Останавливаем всплытие события клика
+capturedPolygons = capturedPolygons.filter(p => p !== poly);
+L.DomEvent.stopPropagation(event);
 }
 });
-});
-});
+}
+// Применяем событие удаления для стартовой зоны
+attachEraseEvent(baseLayer);
