@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Военно-тактическая Карта</title>
+    
+    <!-- Подключаем стили Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com" />
+    
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #111;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+            background-color: #1a1a1a;
+        }
+
+        /* Инверсия для создания темной темы карты без багов */
+        .leaflet-tile {
+            filter: brightness(0.6) invert(1) hue-rotate(180deg) saturate(0.6);
+        }
+
+        /* Верхняя панель */
+        .war-status-bar {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid #444;
+            padding: 10px 20px;
+            border-radius: 6px;
+            display: flex;
+            gap: 25px;
+            font-size: 14px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .status-item span {
+            font-weight: bold;
+            color: #ff4d4d;
+        }
+
+        /* Боковое меню */
+        .sidebar {
+            position: absolute;
+            top: 0;
+            left: -300px;
+            width: 260px;
+            height: 100%;
+            background: rgba(25, 25, 25, 0.95);
+            border-right: 1px solid #333;
+            z-index: 2000;
+            transition: left 0.3s ease;
+            padding: 20px;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+        }
+
+        .sidebar.active {
+            left: 0;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 2001;
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .sidebar h3 {
+            margin-top: 40px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 5px;
+            color: #dae0e6;
+        }
+
+        .lang-switch {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+
+        .lang-btn {
+            background: #333;
+            border: 1px solid #555;
+            color: #ccc;
+            padding: 4px 8px;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .lang-btn.active {
+            background: #ff9900;
+            color: #000;
+            font-weight: bold;
+        }
+
+        .faction-filter {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0;
+            cursor: pointer;
+        }
+
+        .faction-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .leaflet-popup-content-wrapper {
+            background: #222 !important;
+            color: #fff !important;
+            border: 1px solid #555;
+            border-radius: 4px !important;
+        }
+        .leaflet-popup-tip {
+            background: #222 !important;
+        }
+    </style>
+</head>
+<body>
+
+    <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+
+    <div class="sidebar" id="sidebar">
+        <div class="lang-switch">
+            <button class="lang-btn active" onclick="changeLang('ru', event)">RU</button>
+            <button class="lang-btn" onclick="changeLang('en', event)">EN</button>
+        </div>
+
+        <h3 id="menu-title">Тактическое меню</h3>
+        
+        <div class="faction-filter">
+            <input type="checkbox" id="layerFaction1" checked onchange="toggleLayers()">
+            <div class="faction-color" style="background: #ff4d4d;"></div>
+            <span id="f1-name">Красный Альянс</span>
+        </div>
+        <div class="faction-filter">
+            <input type="checkbox" id="layerFaction2" checked onchange="toggleLayers()">
+            <div class="faction-color" style="background: #3399ff;"></div>
+            <span id="f2-name">Синяя Федерация</span>
+        </div>
+    </div>
+
+    <div class="war-status-bar">
+        <div class="status-item"><span id="lbl-forces">Силы сторон:</span> <span id="val-forces" style="color: #fff;">500,000</span></div>
+        <div class="status-item"><span id="lbl-losses">Потери:</span> <span id="val-losses">12,400</span></div>
+        <div class="status-item"><span id="lbl-scale">Масштаб симуляции:</span> <span style="color: #ff9900;">1x</span></div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com"></script>
+
+    <script>
+        // Инициализируем карту
+        const map = L.map('map', {
+            zoomControl: false
+        }).setView([55.7558, 37.6173], 6);
+
+        // Используем самую стабильную стандартную подложку
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        const faction1Group = L.layerGroup().addTo(map);
+        const faction2Group = L.layerGroup().addTo(map);
+
+        let currentLang = 'ru';
+
+        const i18n = {
+            ru: {
+                menuTitle: "Тактическое меню",
+                f1: "Красный Альянс",
+                f2: "Синяя Федерация",
+                forces: "Силы сторон:",
+                losses: "Потери:",
+                m1_title: "Штаб 1-й Дивизии",
+                m1_desc: "<b>Статус:</b> Оборона рубежа.<br><b>Численность:</b> 15,000 чел.",
+                m2_title: "Авангард Синих",
+                m2_desc: "<b>Статус:</b> Наступление.<br><b>Техника:</b> 120 танков."
+            },
+            en: {
+                menuTitle: "Tactical Menu",
+                f1: "Red Alliance",
+                f2: "Blue Federation",
+                forces: "Total Forces:",
+                losses: "Losses:",
+                m1_title: "1st Division HQ",
+                m1_desc: "<b>Status:</b> Holding line.<br><b>Personnel:</b> 15,000.",
+                m2_title: "Blue Vanguard",
+                m2_desc: "<b>Status:</b> Advancing.<br><b>Armor:</b> 120 tanks."
+            }
+        };
+
+        const markersData = [
+            {
+                group: faction1Group,
+                coords: [55.7558, 37.6173], 
+                color: '#ff4d4d',
+                radius: 40000, 
+                keyTitle: 'm1_title',
+                keyDesc: 'm1_desc'
+            },
+            {
+                group: faction2Group,
+                coords: [54.5138, 36.2612], 
+                color: '#3399ff',
+                radius: 50000,
+                keyTitle: 'm2_title',
+                keyDesc: 'm2_desc'
+            }
+        ];
+
+        let activeMarkers = [];
+
+        function drawTacticalMap() {
+            faction1Group.clearLayers();
+            faction2Group.clearLayers();
+            activeMarkers = [];
+
+            markersData.forEach(data => {
+                L.circle(data.coords, {
+                    color: data.color,
+                    fillColor: data.color,
+                    fillOpacity: 0.2,
+                    radius: data.radius
+                }).addTo(data.group);
+
+                const marker = L.circleMarker(data.coords, {
+                    radius: 8,
+                    color: '#fff',
+                    fillColor: data.color,
+                    fillOpacity: 1,
+                    weight: 2
+                });
+
+                marker.bindPopup(i18n[currentLang][data.keyDesc]);
+                marker.bindTooltip(i18n[currentLang][data.keyTitle]);
+                
+                marker.addTo(data.group);
+
+                activeMarkers.push({
+                    marker: marker,
+                    keyTitle: data.keyTitle,
+                    keyDesc: data.keyDesc
+                });
+            });
+        }
+
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+        }
+
+        function toggleLayers() {
+            const f1Checked = document.getElementById('layerFaction1').checked;
+            const f2Checked = document.getElementById('layerFaction2').checked;
+
+            if (f1Checked) map.addLayer(faction1Group); else map.removeLayer(faction1Group);
+            if (f2Checked) map.addLayer(faction2Group); else map.removeLayer(faction2Group);
+        }
+
+        function changeLang(lang, event) {
+            currentLang = lang;
+            
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            if(event && event.target) {
+                event.target.classList.add('active');
+            }
+
+            document.getElementById('menu-title').innerText = i18n[lang].menuTitle;
+            document.getElementById('f1-name').innerText = i18n[lang].f1;
+            document.getElementById('f2-name').innerText = i18n[lang].f2;
+            document.getElementById('lbl-forces').innerText = i18n[lang].forces;
+            document.getElementById('lbl-losses').innerText = i18n[lang].losses;
+
+            activeMarkers.forEach(item => {
+                item.marker.setPopupContent(i18n[lang][item.keyDesc]);
+                item.marker.setTooltipContent(i18n[lang][item.keyTitle]);
+            });
+        }
+
+        drawTacticalMap();
+    </script>
+</body>
+</html>
