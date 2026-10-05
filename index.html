@@ -15,7 +15,7 @@
             height: 100%;
             width: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #111;
+            background-color: #242424;
             color: #fff;
             overflow: hidden;
         }
@@ -23,12 +23,6 @@
         #map {
             height: 100%;
             width: 100%;
-            background-color: #1a1a1a;
-        }
-
-        /* Инверсия для создания темной темы карты без багов */
-        .leaflet-tile {
-            filter: brightness(0.6) invert(1) hue-rotate(180deg) saturate(0.6);
         }
 
         /* Верхняя панель */
@@ -176,12 +170,12 @@
     <script src="https://unpkg.com"></script>
 
     <script>
-        // Инициализируем карту
+        // Создаем стандартную рабочую карту мира
         const map = L.map('map', {
             zoomControl: false
         }).setView([55.7558, 37.6173], 6);
 
-        // Используем самую стабильную стандартную подложку
+        // Подключаем стандартный слой без фильтров
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 18
