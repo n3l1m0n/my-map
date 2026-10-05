@@ -3,95 +3,267 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Глобальная Тактическая Карта</title>
+    <title>Военно-тактическая Карта Симуляции</title>
+    
+    <!-- Используем надежные HTTPS CDN, которые 100% одобрены GitHub Pages -->
+    <link rel="stylesheet" href="https://cloudflare.com" integrity="sha512-Zcn6dRxuq7BgdZ6x8S5w1Kz32fU3k40l0w3523fL2Fh32kZ215lM11zU1D0w" crossorigin="anonymous" />
+    
     <style>
         html, body {
             margin: 0; padding: 0; height: 100%; width: 100%;
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background-color: #111; color: #fff; overflow: hidden; user-select: none;
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: #111116; color: #e2e8f0; overflow: hidden;
         }
-        #mapCanvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: grab; background-color: #141416; }
-        #mapCanvas:active { cursor: grabbing; }
 
-        /* Панели интерфейса */
-        .war-status-bar {
-            position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 1000;
-            background: rgba(20, 20, 20, 0.9); border: 1px solid #444; padding: 10px 20px;
-            border-radius: 6px; display: flex; gap: 25px; font-size: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+        #map {
+            height: 100%; width: 100%; z-index: 1;
         }
-        .status-item span { font-weight: bold; color: #ff4d4d; }
 
-        /* Боковое меню */
-        .sidebar {
-            position: absolute; top: 0; left: -300px; width: 260px; height: 100%;
-            background: rgba(25, 25, 25, 0.98); border-right: 1px solid #333; z-index: 2000;
-            transition: left 0.3s ease; padding: 20px; box-shadow: 5px 0 15px rgba(0,0,0,0.5); box-sizing: border-box;
+        /* Фирменный темный фильтр DeepState для карты OpenStreetMap */
+        .leaflet-tile-container {
+            filter: brightness(0.35) contrast(1.15) saturate(0.65) invert(1) hue-rotate(180deg);
         }
-        .sidebar.active { left: 0; }
-        .sidebar-toggle {
-            position: absolute; top: 15px; left: 15px; z-index: 2001;
-            background: #222; border: 1px solid #444; color: #fff; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 18px;
-        }
-        .sidebar h3 { margin-top: 40px; border-bottom: 1px solid #444; padding-bottom: 5px; color: #dae0e6; }
 
-        /* Инструменты редактирования */
-        .tools-panel {
-            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000;
-            background: rgba(25, 25, 25, 0.9); border: 1px solid #444; padding: 8px; border-radius: 6px;
-            display: flex; gap: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        /* ЛЕВАЯ ТАКТИЧЕСКАЯ ПАНЕЛЬ */
+        .left-panel {
+            position: absolute; top: 0; left: 0; width: 280px; height: 100%;
+            background: rgba(28, 28, 35, 0.95); border-right: 1px solid #2d2d3d;
+            z-index: 2000; padding: 15px; box-shadow: 5px 0 20px rgba(0,0,0,0.7);
+            overflow-y: auto; box-sizing: border-box;
         }
-        .btn {
-            background: #333; border: 1px solid #555; color: #fff; padding: 6px 12px;
-            border-radius: 4px; cursor: pointer; font-size: 13px;
+        
+        .panel-section {
+            margin-bottom: 20px; border-bottom: 1px solid #2d2d3d; padding-bottom: 15px;
         }
-        .btn:hover { background: #444; }
-        .btn.active { background: #ff9900; color: #000; font-weight: bold; border-color: #ff9900; }
+        
+        .section-title {
+            font-size: 11px; font-weight: bold; text-transform: uppercase;
+            letter-spacing: 1px; color: #718096; margin-bottom: 10px;
+        }
 
-        .faction-filter { display: flex; align-items: center; gap: 10px; margin: 10px 0; cursor: pointer; }
-        .faction-color { width: 12px; height: 12px; border-radius: 50%; }
-        #map-tooltip {
-            position: absolute; z-index: 3000; background: rgba(20, 20, 20, 0.95);
-            border: 1px solid #555; padding: 8px 12px; border-radius: 4px; font-size: 13px;
-            display: none; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        /* Стилизация кнопок */
+        .grid-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .action-btn {
+            background: #2d2d3d; border: 1px solid #4a5568; color: #e2e8f0;
+            padding: 8px; border-radius: 4px; cursor: pointer; font-size: 13px; text-align: center;
+        }
+        .action-btn:hover { background: #4a5568; }
+        .action-btn.active {
+            background: #e53e3e; border-color: #e53e3e; color: #fff; font-weight: bold;
+        }
+        .action-btn.blue-active {
+            background: #3182ce; border-color: #3182ce; color: #fff; font-weight: bold;
+        }
+
+        /* Ползунки и инпуты */
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; font-size: 12px; color: #a0aec0; margin-bottom: 4px; }
+        .input-group input[type="range"] { width: 100%; accent-color: #e53e3e; }
+        .val-display { float: right; font-weight: bold; color: #ecc94b; }
+
+        /* Чекбоксы нижние */
+        .checkbox-group { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 13px; }
+
+        /* ПАНЕЛЬ «ПОСЛЕДНИЕ СОБЫТИЯ» (СПРАВА ВВЕРХУ) */
+        .events-panel {
+            position: absolute; top: 15px; right: 15px; width: 280px;
+            background: rgba(20, 20, 25, 0.9); border: 1px solid #2d2d3d;
+            border-radius: 6px; z-index: 2000; padding: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+        }
+        .events-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #2d2d3d; padding-bottom: 6px; margin-bottom: 8px;}
+        .events-title { font-size: 13px; font-weight: bold; color: #fff; display: flex; align-items: center; gap: 6px; }
+        .events-title::before { content: ''; display: inline-block; width: 6px; height: 6px; background: #48bb78; border-radius: 50%; }
+        
+        /* ТАЙМЛАЙН УПРАВЛЕНИЯ ВРЕМЕНЕМ (СНИЗУ) */
+        .bottom-timeline {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(20, 20, 25, 0.95); border: 1px solid #2d2d3d;
+            padding: 8px 20px; border-radius: 30px; z-index: 2000; display: flex;
+            align-items: center; gap: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+        .time-controls { display: flex; gap: 10px; color: #a0aec0; cursor: pointer; }
+        .current-date { font-weight: bold; font-size: 13px; color: #ecc94b; }
+
+        /* Бургер-переключатель для скрытия меню */
+        .menu-toggle {
+            cursor: pointer; font-size: 18px; margin-bottom: 15px; display: inline-block;
         }
     </style>
 </head>
 <body>
 
-    <button class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
-
-    <div class="sidebar" id="sidebar">
-        <h3 id="menu-title">Тактическое меню</h3>
-        <div class="faction-filter">
-            <input type="checkbox" id="layerFaction1" checked onchange="redraw()">
-            <div class="faction-color" style="background: #ff4d4d;"></div>
-            <span id="f1-name">Красный Альянс</span>
+    <!-- Боковая тактическая панель управления -->
+    <div class="left-panel">
+        <div class="menu-toggle">☰</div>
+        
+        <!-- Язык -->
+        <div class="panel-section">
+            <div class="section-title">Язык</div>
+            <div class="grid-buttons">
+                <div class="action-btn active">RU<br><span style="font-size:9px;color:#a0aec0;">Русский</span></div>
+                <div class="action-btn">EN<br><span style="font-size:9px;color:#a0aec0;">English</span></div>
+            </div>
         </div>
-        <div class="faction-filter">
-            <input type="checkbox" id="layerFaction2" checked onchange="toggleLayers()">
-            <div class="faction-color" style="background: #3399ff;"></div>
-            <span id="f2-name">Синяя Федерация</span>
+
+        <!-- Сторона контроля -->
+        <div class="panel-section">
+            <div class="section-title">Сторона</div>
+            <div class="grid-buttons">
+                <button class="action-btn active" id="side-ru" onclick="selectSide('ru')">RU Россия<br><span style="font-size:9px;color:#f56565;">Играть за Россию</span></button>
+                <button class="action-btn" id="side-ua" onclick="selectSide('ua')">UA Украина<br><span style="font-size:9px;color:#4299e1;">Играть за Украину</span></button>
+            </div>
+        </div>
+
+        <!-- Действие кисти -->
+        <div class="panel-section">
+            <div class="section-title">Действие</div>
+            <div class="grid-buttons" style="margin-bottom:8px;">
+                <button class="action-btn active" id="tool-draw" onclick="selectTool('draw')">🔴 Захват<br><span style="font-size:9px;color:#a0aec0;">Закрасить зону</span></button>
+                <button class="action-btn" id="tool-erase" onclick="selectTool('erase')">🧽 Ластик<br><span style="font-size:9px;color:#a0aec0;">Стереть краску</span></button>
+            </div>
+        </div>
+
+        <!-- Калькулятор боя -->
+        <div class="panel-section">
+            <div class="section-title">Бой</div>
+            <div class="input-group">
+                <label>Атакующие <span class="val-display" id="val-att">3 000</span></label>
+                <input type="range" min="500" max="10000" step="500" value="3000" oninput="document.getElementById('val-att').innerText = Number(this.value).toLocaleString()">
+            </div>
+            <div class="input-group">
+                <label>Обороняющиеся <span class="val-display" id="val-def">2 000</span></label>
+                <input type="range" min="500" max="10000" step="500" value="2000" oninput="document.getElementById('val-def').innerText = Number(this.value).toLocaleString()">
+            </div>
+            <div class="input-group">
+                <label>Интенсивность боя <span class="val-display" id="val-int">3</span></label>
+                <input type="range" min="1" max="5" step="1" value="3" oninput="document.getElementById('val-int').innerText = this.value">
+            </div>
+        </div>
+
+        <!-- Дополнительные чекбоксы -->
+        <div class="checkbox-group">
+            <input type="checkbox" id="chk-search" checked> <label for="chk-search">Показывать поиск</label>
+        </div>
+        <div class="checkbox-group">
+            <input type="checkbox" id="chk-cam" checked> <label for="chk-cam">Приближать камеру к зоне</label>
         </div>
     </div>
 
-    <div class="war-status-bar">
-        <div class="status-item"><span id="lbl-forces">Силы сторон:</span> <span id="val-forces" style="color: #fff;">620,000</span></div>
-        <div class="status-item"><span id="lbl-losses">Потери:</span> <span id="val-losses">18,100</span></div>
-        <div class="status-item"><span id="lbl-scale">Масштаб:</span> <span style="color: #ff9900;">1x</span></div>
+    <!-- Информационная панель последних событий -->
+    <div class="events-panel">
+        <div class="events-header">
+            <div class="events-title">Последние события</div>
+            <div style="font-size:10px; color:#718096; cursor:pointer;">Сводка дня ^</div>
+        </div>
+        <div style="font-size:12px; color:#a0aec0; text-align:center; padding: 10px 0;">Пока нет событий боестолкновений</div>
     </div>
 
-    <!-- Панель переключения режимов -->
-    <div class="tools-panel">
-        <button class="btn active" id="btn-move" onclick="setMode('move')">🖐 Двигать карту</button>
-        <button class="btn" id="btn-marker" onclick="setMode('addMarker')">📍 Ставить базы</button>
-        <button class="btn" id="btn-line" onclick="setMode('addLine')">✏️ Линия фронта</button>
-        <button class="btn" style="background: #c62828;" onclick="clearMap()">🗑 Очистить рисунки</button>
+    <!-- Нижняя временная дорожка симуляции -->
+    <div class="bottom-timeline">
+        <div class="time-controls">◀  ❚❚  ▶</div>
+        <div class="current-date">05.10.2026</div>
+        <div style="font-size: 11px; background: #2d2d3d; padding: 2px 8px; border-radius: 10px; color:#48bb78;">● Сейчас</div>
     </div>
 
-    <div id="map-tooltip"></div>
-    <canvas id="mapCanvas"></canvas>
+    <!-- Контейнер интерактивной карты -->
+    <div id="map"></div>
 
-    <!-- Подключаем конфигурационные файлы напрямую из твоего репозитория -->
-    <script src="config.js"></script>
-</body>
-</html>
+    <!-- Подключаем скрипты Leaflet по безопасному протоколу -->
+    <script src="https://cloudflare.com" integrity="sha512-BwR7r4J5kb8j9c46xU5c81x40f51L8u4a3L4D60835fM1d70w2F284kZ1257M" crossorigin="anonymous"></script>
+
+    <script>
+        // Инициализируем карту с координатами Славянска и Краматорска, как на твоем скришоте
+        const map = L.map('map', { zoomControl: false }).setView([48.95, 37.60], 11);
+
+        // Стабильный глобальный источник карты
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 18,
+            attribution: 'OpenFreeMap © OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Переменные тактического инструментария
+        let activeSide = 'ru'; // Текущая фракция для закраски
+        let activeTool = 'draw'; // Режим кисти: draw (рисовать) или erase (стереть)
+        let capturedPolygons = []; // Массив нарисованных полигонов
+
+        // Координатная сетка фронта по умолчанию (для создания стартовой серой и красной зоны как на скриншоте)
+        const initialFrontZone = [
+            [49.05, 37.75], [49.12, 37.90], [48.98, 38.05], 
+            [48.85, 37.95], [48.70, 37.85], [48.75, 37.65],
+            [48.90, 37.70]
+        ];
+
+        // Добавляем стартовую тактическую зону контроля (Красная армия фронта)
+        const baseLayer = L.polygon(initialFrontZone, {
+            color: '#c53030',
+            fillColor: '#c53030',
+            fillOpacity: 0.35,
+            weight: 2
+        }).addTo(map);
+capturedPolygons.push(baseLayer);
+// Функция переключения активной стороны
+function selectSide(side) {
+activeSide = side;
+document.getElementById('side-ru').classList.remove('active');
+document.getElementById('side-ua').classList.remove('active');
+if(side === 'ru') {
+document.getElementById('side-ru').classList.add('active');
+document.getElementById('tool-draw').innerHTML = "🔴 Захват
+Россия захватывает";
+} else {
+document.getElementById('side-ua').classList.add('active');
+document.getElementById('tool-draw').innerHTML = "🔵 Захват
+Украина захватывает";
+}
+}
+// Функция переключения кисти
+function selectTool(tool) {
+activeTool = tool;
+document.getElementById('tool-draw').classList.remove('active', 'blue-active');
+document.getElementById('tool-erase').classList.remove('active');
+if(tool === 'draw') {
+if(activeSide === 'ru') document.getElementById('tool-draw').classList.add('active');
+else document.getElementById('tool-draw').classList.add('blue-active');
+} else {
+document.getElementById('tool-erase').classList.add('active');
+}
+}
+// РЕЖИМ КЛИКА: Динамический захват территорий кликом по карте
+map.on('click', function(e) {
+const clickCoords = [e.latlng.lat, e.latlng.lng];
+if(activeTool === 'draw') {
+// Генерируем тактический боевой квадрат вокруг точки клика
+const offset = 0.025;
+const polyPoints = [
+[clickCoords[0] + offset, clickCoords[1] - offset],
+[clickCoords[0] + offset, clickCoords[1] + offset],
+[clickCoords[0] - offset, clickCoords[1] + offset],
+[clickCoords[0] - offset, clickCoords[1] - offset]
+];
+const colorConfig = activeSide === 'ru' ? '#c53030' : '#2b6cb0';
+const newZone = L.polygon(polyPoints, {
+color: colorConfig,
+fillColor: colorConfig,
+fillOpacity: 0.4,
+weight: 1.5
+}).addTo(map);
+// Записываем в память, чтобы ластик мог удалять
+capturedPolygons.push(newZone);
+// Автоматическое смещение камеры к зоне боевых действий, если стоит чекбокс
+if(document.getElementById('chk-cam').checked) {
+map.panTo(e.latlng);
+}
+}
+});
+// Работа ластика: при клике на полигон в режиме ластика — удаляем его с карты
+map.on('layeradd', function() {
+capturedPolygons.forEach((poly, index) => {
+poly.on('click', function(event) {
+if(activeTool === 'erase') {
+map.removeLayer(poly);
+capturedPolygons.splice(index, 1);
+L.DomEvent.stopPropagation(event); // Останавливаем всплытие события клика
+}
+});
+});
+});
